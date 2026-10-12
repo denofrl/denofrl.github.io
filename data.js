@@ -4,6 +4,7 @@
 const MUSCLES = ['Brust', 'Rücken', 'Schultern', 'Bizeps', 'Trizeps', 'Unterarme', 'Quadrizeps', 'Beinbeuger', 'Po', 'Adduktoren', 'Waden', 'Core', 'Ausdauer'];
 const EX_CATS = ['Oberkörper', 'Unterkörper', 'Core', 'Calisthenics', 'Cardio'];
 const PLAN_CATS = ['Oberkörper', 'Unterkörper', 'Ganzkörper', 'Push', 'Pull', 'Beine', 'Core', 'Calisthenics', 'Cardio', 'Sonstiges'];
+const THEMES = { auto: 'Automatisch (wie Gerät)', light: 'Hell', dark: 'Dunkel' };
 const EQUIP = ['Kurzhanteln', 'Parallettes', 'Körpergewicht'];
 const LEVELS = ['', 'Einsteiger', 'Mittel', 'Fortgeschritten'];
 
@@ -249,16 +250,46 @@ const EXERCISES = {
 
   /* ---------- Cardio ---------- */
   run_easy: {
-    name: 'Lockerer Dauerlauf', cat: 'Cardio', m: ['Ausdauer', 'Waden'], eq: 'Körpergewicht', lv: 1,
-    cues: ['Tempo so, dass du dich noch unterhalten kannst.', 'Kleine, lockere Schritte, aufrechter Oberkörper.', 'Bei Bedarf Gehpausen einbauen (z. B. 3 min laufen / 1 min gehen).', 'Lieber regelmäßig kurz als selten lang.'],
-    easy: 'Mehr Gehpausen (2 min laufen / 2 min gehen).', hard: 'Länger laufen (bis 40 min), Tempo bleibt locker.',
+    name: 'Grundlagenlauf (locker)', cat: 'Cardio', m: ['Ausdauer', 'Waden'], eq: 'Körpergewicht', lv: 1,
+    cues: ['Tempo so, dass du dich noch unterhalten kannst.', 'Kleine, lockere Schritte, aufrechter Oberkörper.', 'Bei Bedarf Gehpausen einbauen (z. B. 3 min laufen / 1 min gehen).', 'Baut die Grundlagenausdauer auf – der wichtigste Laufbaustein.'],
+    easy: 'Mehr Gehpausen (2 min laufen / 2 min gehen).', hard: 'Länger laufen (bis 45 min), Tempo bleibt locker.',
     pose: { h: [62, 11], l: ['60,18 56,42', '56,42 66,54 62,68', '56,42 48,56 36,58', '60,22 68,30 74,24', '60,22 52,30 46,36'] }
   },
-  jacks: {
-    name: 'Hampelmann (Jumping Jacks)', cat: 'Cardio', m: ['Ausdauer', 'Waden', 'Schultern'], eq: 'Körpergewicht', lv: 1,
-    cues: ['Aus dem Stand Beine grätschen und Arme über den Kopf führen.', 'Federnd auf den Fußballen landen.', 'Gleichmäßiger Rhythmus.', 'Gut als Aufwärmen.'],
-    easy: 'Ohne Sprung: abwechselnd seitlich tippen.', hard: 'Schneller oder länger.',
-    pose: { h: [60, 11], l: ['60,18 60,42', '60,42 48,72', '60,42 72,72', '60,20 46,10 40,0', '60,20 74,10 80,0'] }
+  run_interval: {
+    name: 'Intervall-Lauf (VO2max)', cat: 'Cardio', m: ['Ausdauer', 'Quadrizeps', 'Waden'], eq: 'Körpergewicht', lv: 2,
+    cues: ['Intervalle zügig: ca. 8 von 10 Anstrengung, Tempo über alle Intervalle gleichmäßig halten.', 'Vorher 10 min locker einlaufen.', 'Pausen locker traben oder gehen, bis sich die Atmung beruhigt.', 'Danach 5–10 min auslaufen. Erst nach einigen Wochen lockerem Laufen einsetzen.'],
+    easy: '4 × 2 min zügig, je 2 min gehen.', hard: '5–6 × 3–4 min zügig, je 2 min traben.',
+    pose: { h: [66, 12], x: ['M18 28H32', 'M14 38H30', 'M20 48H32'], l: ['63,19 55,42', '55,42 68,52 64,68', '55,42 44,54 32,52', '62,23 72,30 78,22', '62,23 52,28 44,34'] }
+  },
+  run_long: {
+    name: 'Long Run (langer, ruhiger Lauf)', cat: 'Cardio', m: ['Ausdauer', 'Waden'], eq: 'Körpergewicht', lv: 2,
+    cues: ['Sehr ruhig und gleichmäßig – eher langsamer als beim normalen Lauf.', 'Etwa 10–20 min länger als dein üblicher Lauf.', 'Gehpausen und Trinken sind erlaubt.', 'Dauer von Woche zu Woche nur langsam steigern (max. ca. 10 %).'],
+    easy: '40 min mit Gehpausen.', hard: '60–75 min am Stück.',
+    pose: { h: [62, 11], x: ['M8 66H22', 'M30 66H44', 'M84 66H98', 'M106 66H116'], l: ['60,18 57,42', '57,42 64,55 61,70', '57,42 51,56 42,60', '60,22 66,32 72,28', '60,22 54,32 50,38'] }
+  },
+  run_strides: {
+    name: 'Steigerungsläufe', cat: 'Cardio', m: ['Ausdauer', 'Waden', 'Beinbeuger'], eq: 'Körpergewicht', lv: 2,
+    cues: ['Am Ende eines lockeren Laufs 4–6 × 80–100 m.', 'Locker beginnen und gleichmäßig bis ca. 90 % beschleunigen.', 'Die letzten Meter austrudeln lassen, zurückgehen.', 'Verbessert Technik und Schnelligkeit ohne große Ermüdung.'],
+    easy: '3–4 Läufe, nur bis ca. 80 % beschleunigen.', hard: '6–8 Läufe.',
+    pose: { h: [64, 12], l: ['62,19 56,42', '56,42 67,53 63,68', '56,42 45,55 33,54', '61,23 70,29 76,22', '61,23 52,29 45,35'], ar: ['82,40 100,40', '96,37 100,40 96,43'] }
+  },
+  burpees: {
+    name: 'Burpees', cat: 'Cardio', m: ['Ausdauer', 'Brust', 'Quadrizeps', 'Core'], eq: 'Körpergewicht', lv: 2,
+    cues: ['Aus dem Stand in die Hocke, Hände vor den Füßen auf den Boden.', 'Beine nach hinten in die Liegestützposition springen oder steigen.', 'Füße zurück zu den Händen, aufrichten und kurz hochspringen.', 'Gleichmäßiges Tempo, Rücken gerade, weich landen.'],
+    easy: 'Ohne Sprung, Beine nacheinander zurücksetzen.', hard: 'Mit Liegestütz am Boden.',
+    pose: { h: [60, 9], l: ['60,16 60,40', '60,40 58,55 58,68', '60,40 62,55 62,68', '60,18 54,6 52,-2', '60,18 66,6 68,-2'], ar: ['80,40 80,28', '77,31 80,28 83,31'] }
+  },
+  high_knees: {
+    name: 'Kniehebelauf (High Knees)', cat: 'Cardio', m: ['Ausdauer', 'Core', 'Quadrizeps'], eq: 'Körpergewicht', lv: 1,
+    cues: ['Auf der Stelle laufen, Knie bis etwa Hüfthöhe.', 'Auf den Fußballen bleiben, Arme schwingen mit.', 'Oberkörper aufrecht.', 'In Intervallen, z. B. 20–30 s.'],
+    easy: 'Im Gehen mit hohen Knien.', hard: 'Schneller oder längere Intervalle.',
+    pose: { h: [60, 11], l: ['60,18 60,42', '60,42 60,57 60,72', '60,42 74,42 72,56', '60,20 68,28 72,22', '60,20 54,30 50,36'] }
+  },
+  squat_jumps: {
+    name: 'Hocksprünge (Squat Jumps)', cat: 'Cardio', m: ['Ausdauer', 'Quadrizeps', 'Po', 'Waden'], eq: 'Körpergewicht', lv: 2,
+    cues: ['Hüftbreit stehen, in eine halbe Kniebeuge gehen.', 'Explosiv nach oben springen.', 'Weich landen, Knie zeigen Richtung Zehen.', 'Bei Knie- oder Sprunggelenksbeschwerden weglassen.'],
+    easy: 'Kniebeuge mit Wadenheben statt Sprung.', hard: 'Tiefer starten, mehr Wiederholungen.',
+    pose: { h: [64, 24], l: ['60,31 50,53', '50,53 70,57 62,72', '60,32 70,38 78,36'], ar: ['90,52 90,38', '87,41 90,38 93,41'] }
   },
   climbers: {
     name: 'Mountain Climbers', cat: 'Cardio', m: ['Ausdauer', 'Core', 'Schultern'], eq: 'Körpergewicht', lv: 2,
@@ -285,8 +316,12 @@ const DEFAULT_TEMPLATES = [
   { id: 'GK', name: 'Ganzkörper Calisthenics', cat: 'Calisthenics', items: [
     ['scap_pushup', 2, '8–10'], ['pp_pushup', 3, '6–12'], ['pike_pushup', 3, '5–8'], ['superman', 3, '8–10'],
     ['split_squat', 3, '8–10 je Seite'], ['hollow', 3, '15–30 s'], ['tuck_lsit', 3, '5–15 s']] },
-  { id: 'CA', name: 'Lockerer Lauf', cat: 'Cardio', note: 'Locker laufen, 20–30 Minuten. Tempo so, dass du dich noch unterhalten kannst. Bei Bedarf Gehpausen einbauen.', items: [
-    ['jacks', 1, '1–2 min Aufwärmen'], ['run_easy', 1, '20–30 min']] }
+  { id: 'RG', name: 'Grundlagenlauf', cat: 'Cardio', dur: 35, note: 'Locker laufen – Tempo so, dass du dich noch unterhalten kannst. Bei Bedarf Gehpausen einbauen.', items: [
+    ['run_easy', 1, '25–35 min']] },
+  { id: 'RV', name: 'Intervall-Lauf (VO2max)', cat: 'Cardio', dur: 40, note: 'Intensive Einheit: höchstens 1× pro Woche. Für den Einstieg die leichtere Variante (4 × 2 min) nutzen.', items: [
+    ['run_easy', 1, '10 min einlaufen'], ['run_interval', 1, '4–5 × 3 min zügig, je 2 min traben'], ['run_easy', 1, '5–10 min auslaufen']] },
+  { id: 'RL', name: 'Long Run', cat: 'Cardio', dur: 55, note: 'Langsam und gleichmäßig. Dauer nur schrittweise steigern.', items: [
+    ['run_long', 1, '45–60 min'], ['run_strides', 1, 'optional 4 × 80 m am Ende']] }
 ];
 
 const RUN_HINT = 'Locker laufen, 20–30 Minuten. Tempo so, dass du dich noch unterhalten kannst. Bei Bedarf Gehpausen einbauen (z. B. 3 min laufen / 1 min gehen).';

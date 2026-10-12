@@ -1,13 +1,16 @@
 :root {
   --bg: #f5f6f4; --card: #ffffff; --tx: #1c2321; --mut: #66706c; --line: #e2e5e2;
-  --ac: #1f6f5c; --ac-soft: #e3f0ec; --warn: #b4531a; --warn-soft: #fcefe5; --run: #3559a8; --run-soft: #e7ecf8;
+  --ac: #1f6f5c; --ac-soft: #e3f0ec; --on-ac: #ffffff; --warn: #b4531a; --warn-soft: #fcefe5; --run: #3559a8; --run-soft: #e7ecf8;
   --r: 14px;
-  color-scheme: light dark;
+  color-scheme: light;
 }
+/* Dunkles Design: automatisch nach Gerät (außer "Hell" gewählt) oder fest über Einstellungen */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #121614; --card: #1b201e; --tx: #e8ecea; --mut: #9aa39f; --line: #2c3330;
-    --ac: #5fbfa4; --ac-soft: #1d332c; --warn: #f0a46c; --warn-soft: #3a2a1d; --run: #8eaaf0; --run-soft: #1f2840; }
+  :root:not([data-theme=light]) { --bg: #121614; --card: #1b201e; --tx: #e8ecea; --mut: #9aa39f; --line: #2c3330;
+    --ac: #5fbfa4; --ac-soft: #1d332c; --on-ac: #0d1a16; --warn: #f0a46c; --warn-soft: #3a2a1d; --run: #8eaaf0; --run-soft: #1f2840; color-scheme: dark; }
 }
+:root[data-theme=dark] { --bg: #121614; --card: #1b201e; --tx: #e8ecea; --mut: #9aa39f; --line: #2c3330;
+  --ac: #5fbfa4; --ac-soft: #1d332c; --on-ac: #0d1a16; --warn: #f0a46c; --warn-soft: #3a2a1d; --run: #8eaaf0; --run-soft: #1f2840; color-scheme: dark; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--tx);
@@ -30,8 +33,7 @@ input[type=text], input[type=number], input[type=date], input[type=time], select
 textarea { min-height: 70px; }
 button, .btn { min-height: 44px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--card); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
-button.pri { background: var(--ac); border-color: var(--ac); color: #fff; font-weight: 600; }
-@media (prefers-color-scheme: dark) { button.pri { color: #0d1a16; } }
+button.pri { background: var(--ac); border-color: var(--ac); color: var(--on-ac); font-weight: 600; }
 button.dang { color: var(--warn); }
 button.ico { width: 44px; padding: 0; font-size: 1.1rem; }
 button:disabled { opacity: .45; cursor: default; }
@@ -50,7 +52,7 @@ button:disabled { opacity: .45; cursor: default; }
 .chips::-webkit-scrollbar { display: none; }
 .chips button { flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.2; padding: 6px 12px; font-size: .9rem; }
 .chips button small { color: var(--mut); font-size: .72rem; }
-.chips button.on { background: var(--ac); border-color: var(--ac); color: #fff; font-weight: 600; }
+.chips button.on { background: var(--ac); border-color: var(--ac); color: var(--on-ac); font-weight: 600; }
 .chips button.on small { color: inherit; opacity: .85; }
 .chips button.add { color: var(--ac); border-style: dashed; justify-content: center; }
 .seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--line); padding: 4px; border-radius: 12px; margin-top: 4px; }
@@ -101,8 +103,7 @@ details li { margin: 3px 0; }
 /* Kalender */
 .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .days button { padding: 0; min-height: 44px; font-size: .9rem; }
-.days button.on { background: var(--ac); border-color: var(--ac); color: #fff; font-weight: 600; }
-@media (prefers-color-scheme: dark) { .days button.on { color: #0d1a16; } }
+.days button.on { background: var(--ac); border-color: var(--ac); color: var(--on-ac); font-weight: 600; }
 .daytimes { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
 .switch { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
 .switch input { width: 22px; height: 22px; accent-color: var(--ac); }
@@ -127,3 +128,19 @@ details li { margin: 3px 0; }
   opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; z-index: 20; }
 #toast.show { opacity: 1; }
 @media (min-width: 560px) { .ex { grid-template-columns: 140px 1fr; } }
+
+/* Wochenplan */
+.slot { border: 1px solid var(--line); border-left: 4px solid var(--ac); border-radius: 10px; padding: 8px; margin: 8px 0; display: grid; gap: 6px; }
+.slot.L { border-left-color: var(--run); }
+.slotrow, .slothead { display: grid; grid-template-columns: 1.6fr 1.1fr 62px; gap: 6px; }
+.slothead { font-size: .78rem; color: var(--mut); padding: 0 13px; margin-top: 8px; }
+.slotrow select, .slotrow input { padding-left: 8px; padding-right: 4px; }
+.slotrow2 { display: grid; grid-template-columns: 1fr 44px; gap: 6px; }
+.stepper { display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; }
+.stepper input { text-align: center; }
+div.f { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--mut); flex: 1; min-width: 150px; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.tag.run { background: var(--run-soft); color: var(--run); }
+.catlist { list-style: none; padding: 0; margin: 0; }
+.catlist li { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.chips button.add.on { color: var(--on-ac); border-style: solid; }
