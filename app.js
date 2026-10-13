@@ -8,6 +8,9 @@ const WD_LONG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sam
 const BASE_CAT = { OA: 'Oberkörper', OB: 'Oberkörper', UA: 'Unterkörper', UB: 'Unterkörper' };
 const ROT_LABEL = { R1: 'Rotation Kraft / Calisthenics', R2: 'Rotation Laufen / Cardio' };
 const MAX_IMPORT = 1024 * 1024; // 1 MB
+const SKEY = 'trainingsplaner.session'; // laufendes Training (nur lokal)
+const APP_URL = location.protocol === 'https:' ? location.origin + location.pathname.replace(/index\.html$/, '') : 'https://denofrl.github.io/';
+const REST_OPTS = [60, 90, 120, 150, 180], REMIND_OPTS = [0, 15, 30, 60, 120];
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -40,7 +43,7 @@ const defaultTemplates = () => DEFAULT_TEMPLATES.map(mkPlan);
 const slot = (wd, time, dur, use) => ({ id: 's' + uid(), wd, time, dur, use });
 function defaults() {
   return {
-    v: 3, templates: defaultTemplates(), custom: {}, cats: [], ui: { theme: 'auto' },
+    v: 3, templates: defaultTemplates(), custom: {}, cats: [], ui: { theme: 'auto', rest: 90, remind: 30 }, log: [], done: {}, lastBackup: null,
     cal: { start: nextMonday(), weeks: 8, cues: true,
       slots: [slot(0, '18:00', 60, 'R1'), slot(2, '18:00', 60, 'R1'), slot(4, '18:00', 60, 'R1'), slot(5, '10:00', 40, 'R2')],
       rot1: ['OA', 'UA', 'OB', 'UB'], first1: 0, rot2: ['RG', 'RV', 'RG', 'RL'], first2: 0 },
@@ -81,7 +84,8 @@ function sanitize(input) {
   const d = defaults(), out = { v: 3 };
   out.cats = [...new Set(arr(s.cats, 30).map(c => str(c, 30)).filter(c => c && !PLAN_CATS.includes(c) && !EX_CATS.includes(c)))];
   const planCats = [...PLAN_CATS, ...out.cats], exCats = [...EX_CATS, ...out.cats];
-  out.ui = { theme: THEMES[obj(s.ui).theme] ? s.ui.theme : 'auto' };
+  const ui = obj(s.ui);
+  out.ui = { theme: THEMES[ui.theme] ? ui.theme : 'auto', rest: REST_OPTS.includes(ui.rest) ? ui.rest : 90, remind: REMIND_OPTS.includes(ui.remind) ? ui.remind : 30 };
   out.custom = {};
   for (const [id, c0] of Object.entries(obj(s.custom)).slice(0, 200)) {
     const c = obj(c0), name = str(c.name, 60);
@@ -118,6 +122,15 @@ function sanitize(input) {
     if (Object.keys(x).length) out.edits[k] = x;
   }
   out.lastExport = Number.isFinite(s.lastExport) ? s.lastExport : null;
+  out.lastBackup = Number.isFinite(s.lastBackup) ? s.lastBackup : null;
+  out.done = {};
+  for (const [k, v] of Object.entries(obj(s.done)).slice(-3000)) if (RE_EDIT.test(k) && Number.isFinite(v)) out.done[k] = v;
+  const num = (x, hi) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= hi ? Math.round(x * 100) / 100 : null);
+  out.log = arr(s.log, 5000).slice(-3000).map(obj).filter(l => isDate(l.date)).map(l => ({
+    id: RE_ID.test(l.id) ? l.id : uid(), date: l.date, t: num(l.t, 1e14) || 0, dur: num(l.dur, 600), plan: str(l.plan, 40), name: str(l.name, 40) || 'Training',
+    short: l.short === true, ev: RE_EDIT.test(l.ev) ? l.ev : null,
+    items: arr(l.items, 40).map(obj).filter(it => typeof it.ex === 'string').map(it => ({ ex: str(it.ex, 40), name: str(it.name, 60) || 'Übung',
+      sets: arr(it.sets, 20).map(obj).map(x => ({ w: num(x.w, 500), r: num(x.r, 1000) })), min: num(it.min, 600), km: num(it.km, 300) })) }));
   return out;
 }
 function load() {
@@ -139,10 +152,17 @@ function save() {
   catch (e) { storageOk = false; toast('Speichern nicht möglich (privater Modus?). Änderungen gehen beim Schließen verloren.'); }
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3200); }
+const DARK_MQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const isDark = () => S.ui.theme === 'dark' || (S.ui.theme === 'auto' && !!DARK_MQ && DARK_MQ.matches);
+const ICON_SUN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const ICON_MOON = '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>';
 function applyTheme() {
   const t = S.ui.theme;
   if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t;
+  const b = document.getElementById('themeBtn');
+  if (b) { const d = isDark(); b.innerHTML = d ? ICON_SUN : ICON_MOON; b.setAttribute('aria-label', d ? 'Helles Design' : 'Dunkles Design'); b.title = b.getAttribute('aria-label'); }
 }
+if (DARK_MQ && DARK_MQ.addEventListener) DARK_MQ.addEventListener('change', () => applyTheme());
 
 const allEx = () => ({ ...EXERCISES, ...S.custom });
 const exInfo = id => EXERCISES[id] || S.custom[id] || { name: 'Unbekannte Übung', cat: 'Oberkörper', m: [], cues: [] };
@@ -217,6 +237,7 @@ function evDescription(e) {
   if (!p.items.length) L.push('(Keine Übungen eingetragen)');
   if (p.note) L.push('', p.note);
   if (p.cat !== 'Cardio') L.push('', TRAINING_HINT);
+  L.push('', `In der App öffnen: ${APP_URL}#heute`);
   return L.join('\n');
 }
 
@@ -249,7 +270,10 @@ function buildICS(events) {
       `SUMMARY:${icsEsc(evTitle(e))}`,
       `DESCRIPTION:${icsEsc(evDescription(e))}`,
       `CATEGORIES:${icsEsc(p ? p.cat : 'Training')}`,
-      'TRANSP:OPAQUE', 'END:VEVENT');
+      `URL:${APP_URL}#heute`,
+      'TRANSP:OPAQUE');
+    if (S.ui.remind) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(evTitle(e))}`, `TRIGGER:-PT${S.ui.remind}M`, 'END:VALARM');
+    L.push('END:VEVENT');
   }
   L.push('END:VCALENDAR');
   return L.map(icsFold).join('\r\n') + '\r\n';
@@ -298,7 +322,9 @@ function renderPlan() {
       <label class="f" style="margin-top:8px">Hinweis zum Plan (optional, erscheint im Kalender)<textarea maxlength="300" data-act="pnote">${esc(t.note)}</textarea></label>
       <div class="row" style="margin-top:8px"><button class="sp" data-act="pcopy">Plan kopieren</button><button class="sp dang" data-act="pdel" ${S.templates.length < 2 ? 'disabled' : ''}>Plan löschen</button></div></div>`;
   } else {
-    h += `<p class="mut">${esc(t.note || (t.cat === 'Cardio' ? RUN_HINT : TRAINING_HINT))}</p>`;
+    h += `<p class="mut">${esc(t.note || (t.cat === 'Cardio' ? RUN_HINT : TRAINING_HINT))}</p>
+      <div class="row"><button class="pri sp" data-act="trStart" data-plan="${t.id}" ${t.items.length ? '' : 'disabled'}>Training starten</button>
+      <button class="sp" data-act="trStartShort" data-plan="${t.id}" ${t.items.length ? '' : 'disabled'}>Kurzversion</button></div>`;
   }
   if (!t.items.length) h += '<div class="card mut">Keine Übungen. Tippe auf „Bearbeiten“ oder füge Übungen im Bereich „Übungen“ hinzu.</div>';
   t.items.forEach((it, i) => {
@@ -538,10 +564,13 @@ function renderCal() {
   h += `<h2>Export</h2><div class="card">
     ${Object.keys(S.edits).length ? `<button class="full" data-act="clearEdits" style="margin-bottom:10px">Alle Einzeländerungen verwerfen</button>` : ''}
     <label class="switch" style="font-weight:400"><input type="checkbox" data-act="cues" ${c.cues ? 'checked' : ''}> Kurze Technikhinweise in die Terminbeschreibung</label>
+    <label class="f" style="margin-bottom:10px">Erinnerung (einmal pro Termin)<select data-act="remind">${REMIND_OPTS.map(m => `<option value="${m}"${m === S.ui.remind ? ' selected' : ''}>${m ? m + ' Minuten vorher' : 'Keine Erinnerung'}</option>`).join('')}</select></label>
     <button class="pri full" data-act="ics" ${active.length ? '' : 'disabled'}>ICS-Datei herunterladen (${active.length} Termine)</button>
     <p class="mut" style="margin-top:10px">Jeder Termin enthält Planname, Übungen in Reihenfolge, Sätze und Wiederholungen bzw. Zeiten – so, wie der Plan beim Export aussieht.
     Die Datei funktioniert mit Google Kalender, Apple Kalender und Outlook und wird nur auf deinem Gerät erzeugt.
-    Importierte Termine werden <b>nicht</b> synchronisiert: Spätere Änderungen hier erscheinen erst nach einem neuen Import.</p>
+    Importierte Termine werden <b>nicht</b> synchronisiert: Spätere Änderungen hier erscheinen erst nach einem neuen Import.
+    Jeder Termin enthält einen Link zur Heute-Ansicht der App.</p>
+    <p class="mut"><b>Google Kalender</b> übernimmt die Erinnerung aus der Datei nicht, sondern nutzt die Standard-Benachrichtigung des Kalenders – stelle sie beim Kalender „Training“ einmalig ein (z. B. 30 Minuten vorher).</p>
     ${S.lastExport ? `<p class="note w">Zuletzt exportiert am ${new Date(S.lastExport).toLocaleString('de-DE')}. Ein erneuter Import kann doppelte Termine erzeugen – lösche alte Termine vorher im Kalender oder importiere in einen eigenen, neuen Kalender.</p>` : ''}
     <details><summary>So importierst du die Datei</summary><ul>
       <li><b>Google Kalender:</b> am Computer calendar.google.com → Einstellungen → Importieren & exportieren → Datei wählen. (Tipp: vorher einen eigenen Kalender „Training“ anlegen.)</li>
@@ -570,6 +599,7 @@ function calAction(act, i, el, id) {
     case 'rotAdd': { const v = $('#add_' + r).value; if (planById(v)) { c[r] = c[r].filter(planById); c[r].push(v); } break; }
     case 'first': c[r] = int(el.value, 0, 29, 0); break;
     case 'cues': c.cues = el.checked; break;
+    case 'remind': S.ui.remind = REMIND_OPTS.includes(Number(el.value)) ? Number(el.value) : 30; break;
     case 'start': if (isDate(el.value)) { c.start = el.value; S.edits = {}; } break;
     case 'weeks': c.weeks = int(el.value, 1, 52, c.weeks); break;
     case 'wMinus': c.weeks = Math.max(1, c.weeks - 1); break;
@@ -602,10 +632,12 @@ function calAction(act, i, el, id) {
 
 /* ---------- Ansicht: Einstellungen ---------- */
 function renderSettings() {
-  return `<h2>Darstellung</h2><div class="card"><label class="f">Design<select data-act="theme">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}"${k === S.ui.theme ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
+  return `<h2>Darstellung & Training</h2><div class="card"><div class="row"><label class="f">Design<select data-act="theme">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}"${k === S.ui.theme ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label class="f">Satzpause (Timer)<select data-act="rest">${REST_OPTS.map(x => `<option value="${x}"${x === S.ui.rest ? ' selected' : ''}>${Math.floor(x / 60)}:${pad(x % 60)} min</option>`).join('')}</select></label></div></div>
+    ${installPrompt ? '<h2>App</h2><div class="card"><p class="mut">Installiere die App auf dem Startbildschirm – mit eigenem Symbol, im Vollbild und auch offline nutzbar.</p><button class="pri full" data-act="install">App installieren</button></div>' : ''}
     <h2>Deine Daten</h2><div class="card">
     <p>Diese Website ist öffentlich, aber deine Pläne und Einstellungen werden <b>nur auf diesem Gerät</b> in diesem Browser gespeichert. Es gibt keinen Server und kein Konto – niemand sonst kann deine Daten sehen oder ändern.</p>
-    <p class="mut">Für ein anderes Gerät oder als Sicherung: Speicherdatei herunterladen und dort wieder hochladen. Beim Hochladen wird die Datei geprüft; übernommen werden nur deine Pläne, eigenen Übungen, Kategorien und Kalendereinstellungen. Die eingebaute Übungsbibliothek und die Standardvorlagen der App können dadurch nicht verändert werden.</p>
+    <p class="mut">Für ein anderes Gerät oder als Sicherung: Speicherdatei herunterladen und dort wieder hochladen. Beim Hochladen wird die Datei geprüft; übernommen werden nur deine Pläne, eigenen Übungen, Kategorien, Kalendereinstellungen und dein Trainingsprotokoll. Die eingebaute Übungsbibliothek und die Standardvorlagen der App können dadurch nicht verändert werden.</p>
     ${storageOk ? '' : '<p class="note w">Der Browser erlaubt gerade kein Speichern (z. B. privater Modus). Lade deine Daten vor dem Schließen als Datei herunter.</p>'}
     <div class="row" style="margin-top:10px"><button class="pri sp" data-act="export">Speicherdatei herunterladen</button>
     <label class="btn sp">Speicherdatei hochladen<input type="file" accept="application/json,.json" id="importFile" hidden></label></div></div>
@@ -614,6 +646,7 @@ function renderSettings() {
     <div class="row" style="margin-top:8px"><div class="sp"><input type="text" id="catNew" maxlength="30" placeholder="Neue Kategorie" aria-label="Neue Kategorie"></div><button data-act="catAdd">Hinzufügen</button></div></div>
     <h2>Zurücksetzen</h2><div class="card">
     <button class="full" data-act="resetPlan">Trainingspläne auf Vorlagen zurücksetzen</button>
+    <button class="full" style="margin-top:8px" data-act="logClear" ${S.log.length ? '' : 'disabled'}>Trainingsprotokoll löschen (${S.log.length} Einheiten)</button>
     <button class="full dang" style="margin-top:8px" data-act="resetAll">Alles auf diesem Gerät löschen und zurücksetzen</button></div>
     <h2>Hinweise</h2><div class="card mut">
     <p>Die Vorlagen sind für einen Wiedereinstieg gedacht. Bei Schmerzen, Vorerkrankungen oder Unsicherheit ärztlich oder physiotherapeutisch abklären.</p>
@@ -628,6 +661,9 @@ function addCat(name) {
 function setAction(act, i, el) {
   switch (act) {
     case 'theme': S.ui.theme = THEMES[el.value] ? el.value : 'auto'; applyTheme(); break;
+    case 'rest': S.ui.rest = REST_OPTS.includes(Number(el.value)) ? Number(el.value) : 90; break;
+    case 'install': if (installPrompt) { installPrompt.prompt(); installPrompt = null; } return 'view';
+    case 'logClear': if (!confirm(`Alle ${S.log.length} gespeicherten Einheiten löschen? Das kann nicht rückgängig gemacht werden.`)) return false; S.log = []; S.done = {}; break;
     case 'catAdd': if (!addCat($('#catNew').value)) return false; break;
     case 'catDel': {
       const c = S.cats[i]; if (c == null || !confirm(`Kategorie „${c}“ löschen? Pläne und Übungen damit werden umgestellt.`)) return false;
@@ -636,7 +672,7 @@ function setAction(act, i, el) {
       Object.values(S.custom).forEach(x => { if (x.cat === c) x.cat = 'Oberkörper'; });
       break;
     }
-    case 'export': download(`trainingsplan-speicherdatei-${fmtD(new Date())}.json`, JSON.stringify(S, null, 2), 'application/json'); toast('Speicherdatei erstellt.'); return false;
+    case 'export': S.lastBackup = Date.now(); download(`trainingsplan-speicherdatei-${fmtD(new Date())}.json`, JSON.stringify(S, null, 2), 'application/json'); toast('Speicherdatei erstellt.'); break;
     case 'resetPlan':
       if (!confirm('Alle Trainingspläne auf die Standardvorlagen zurücksetzen? Selbst erstellte Pläne werden entfernt.')) return false;
       S.templates = defaultTemplates(); S.cal.rot1 = ['OA', 'UA', 'OB', 'UB']; S.cal.rot2 = ['RG', 'RV', 'RG', 'RL']; S.cal.first1 = S.cal.first2 = 0;
@@ -662,19 +698,308 @@ function importFile(file) {
   r.readAsText(file);
 }
 
+/* ---------- Heute ---------- */
+let installPrompt = null, progEx = '', progMetric = '', progPlan = '';
+const today = () => fmtD(new Date());
+function weekInfo() {
+  const t = today(), mon = addDays(t, -weekday(t)), sun = addDays(mon, 6);
+  const all = buildEvents().filter(e => !e.skip);
+  return { t, mon, sun, all, week: all.filter(e => e.date >= mon && e.date <= sun) };
+}
+function startButtons(planId, ev) {
+  const p = planById(planId), dis = p && p.items.length ? '' : 'disabled';
+  return `<div class="row" style="margin-top:10px"><button class="pri sp" data-act="trStart" data-plan="${planId}" data-ev="${ev || ''}" ${dis}>Training starten</button>
+    <button class="sp" data-act="trStartShort" data-plan="${planId}" data-ev="${ev || ''}" ${dis}>Kurzversion</button></div>`;
+}
+function evCard(e) {
+  const p = planById(e.plan), done = !!S.done[e.id], end = minToT(toMin(e.time) + Number(e.dur));
+  return `<div class="card hero${e.cardio ? ' L' : ''}"><div class="row"><span class="num sp">${shortD(e.date)} · ${e.time}–${end} · ${e.dur} min</span>${done ? '<span class="tag">erledigt ✓</span>' : ''}</div>
+    <h3 style="margin-top:4px">${esc(evTitle(e))}</h3>
+    ${p ? `<p class="mut">${p.items.map(it => esc(exInfo(it.ex).name)).join(' · ') || 'Keine Übungen eingetragen'}</p>` : ''}
+    ${p ? startButtons(p.id, e.id) : ''}</div>`;
+}
+function renderToday() {
+  const { t, all, week } = weekInfo();
+  let h = '';
+  if (A) h += `<div class="card hero run"><span class="num">Training läuft</span><h3>${esc(A.name)}${A.short ? ' (Kurzversion)' : ''}</h3>
+    <p class="mut">Übung ${Math.min(A.idx + 1, A.items.length)} von ${A.items.length}</p><a class="btn pri full" href="#training">Fortsetzen</a></div>`;
+  const tod = all.filter(e => e.date === t);
+  if (tod.length) tod.forEach(e => { h += evCard(e); });
+  else {
+    h += '<div class="card mut">Heute ist kein Training geplant.</div>';
+    const nx = all.find(e => e.date > t);
+    if (nx) h += '<h2>Nächste Einheit</h2>' + evCard(nx);
+    else h += '<div class="card mut">Im Kalender sind keine weiteren Termine geplant. Lege im Bereich „Kalender“ einen Zeitraum fest.</div>';
+  }
+  const doneW = week.filter(e => S.done[e.id]).length;
+  if (week.length) h += `<p class="mut"><a href="#fortschritt">Diese Woche: ${doneW} von ${week.length} Einheiten erledigt</a></p>`;
+  h += `<h2>Freies Training</h2><div class="card"><label class="f">Plan<select id="freePlan">${planOpts(S.templates[0].id)}</select></label>
+    <div class="row" style="margin-top:10px"><button class="pri sp" data-act="startFree">Training starten</button><button class="sp" data-act="startFreeShort">Kurzversion</button></div></div>`;
+  if (installPrompt) h += '<div class="card"><p class="mut">Tipp: Die App lässt sich auf dem Startbildschirm installieren.</p><button class="full" data-act="install">App installieren</button></div>';
+  return h;
+}
+
+/* ---------- Trainingsmodus ---------- */
+function loadSession() {
+  try { const a = JSON.parse(localStorage.getItem(SKEY)); if (a && Array.isArray(a.items) && a.items.length && typeof a.name === 'string') return a; } catch (e) { /* nichts */ }
+  return null;
+}
+let A = loadSession();
+function saveSession() { try { if (A) localStorage.setItem(SKEY, JSON.stringify(A)); else localStorage.removeItem(SKEY); } catch (e) { /* nichts */ } }
+function lastFor(ex) {
+  for (let i = S.log.length - 1; i >= 0; i--) {
+    const it = S.log[i].items.find(x => x.ex === ex && (x.sets.some(z => z.w != null || z.r != null) || x.min != null || x.km != null));
+    if (it) return { date: S.log[i].date, it };
+  }
+  return null;
+}
+const fmtN = n => String(n).replace('.', ',');
+function setsText(it) {
+  if (it.min != null || it.km != null) return [it.min != null ? `${fmtN(it.min)} min` : '', it.km != null ? `${fmtN(it.km)} km` : ''].filter(Boolean).join(' · ');
+  if (!it.sets.length) return '✓';
+  return it.sets.map(z => z.w != null && z.r != null ? `${fmtN(z.w)} kg × ${fmtN(z.r)}` : z.r != null ? fmtN(z.r) : z.w != null ? `${fmtN(z.w)} kg` : '✓').join(' · ');
+}
+function startSession(planId, short, ev) {
+  const p = planById(planId);
+  if (!p || !p.items.length) { toast('Dieser Plan enthält noch keine Übungen.'); return; }
+  if (A && !confirm(`Es läuft bereits ein Training („${A.name}“). Verwerfen und neu starten?`)) return;
+  const items = short && p.cat !== 'Cardio' ? p.items.slice(0, 3) : p.items;
+  A = { plan: p.id, name: p.name, short: !!short, ev: RE_EDIT.test(ev || '') ? ev : null, start: Date.now(), idx: 0, rest: null,
+    items: items.map(it => {
+      const x = exInfo(it.ex), cardio = x.cat === 'Cardio', last = lastFor(it.ex);
+      const n = cardio ? 0 : short ? Math.min(2, it.sets) : it.sets;
+      return { ex: it.ex, name: x.name, dose: short && !cardio ? `${n} × ${it.reps}` : dose(it), cardio,
+        hold: /\bs\b|sek/i.test(it.reps) && !/min/i.test(it.reps),
+        sets: Array.from({ length: n }, (_, k) => { const ls = last && last.it.sets.length ? last.it.sets[Math.min(k, last.it.sets.length - 1)] : null; return { w: ls ? ls.w : null, r: ls ? ls.r : null, done: false }; }),
+        min: cardio && last ? last.it.min : null, km: cardio && last ? last.it.km : null, done: false };
+    }) };
+  saveSession();
+  location.hash = '#training';
+}
+function renderTraining() {
+  if (!A) return '<div class="card mut">Gerade läuft kein Training.</div><a class="btn full" href="#heute">Zur Heute-Ansicht</a>';
+  const n = A.items.length;
+  let h = `<div class="row" style="margin-top:6px"><span class="mut sp">${esc(A.name)}${A.short ? ' · Kurzversion' : ''}</span><button class="dang" data-act="tCancel">Abbrechen</button></div>
+    <div class="progress"><span style="width:${Math.round(Math.min(A.idx, n) / n * 100)}%"></span></div>`;
+  if (A.idx >= n) {
+    const sets = A.items.reduce((a, it) => a + it.sets.filter(z => z.done).length, 0), cardio = A.items.filter(it => it.cardio && it.done).length;
+    return h + `<h2>Training abschließen</h2><div class="card"><p><b>${esc(A.name)}</b> · ${Math.max(1, Math.round((Date.now() - A.start) / 60000))} min</p>
+      <p class="mut">${sets} Sätze abgehakt${cardio ? `, ${cardio} Cardio-Einheit(en)` : ''}. Speichern trägt die Einheit im Bereich „Fortschritt“ ein${A.ev ? ' und hakt den Termin ab' : ''}.
+      Eingetragene Gewichte und Wiederholungen werden beim nächsten Mal vorgeschlagen.</p>
+      <button class="pri full" data-act="tSave">Speichern</button>
+      <button class="full" style="margin-top:8px" data-act="tPrev">Zurück zur letzten Übung</button>
+      <button class="full dang" style="margin-top:8px" data-act="tDiscard">Ohne Speichern beenden</button></div>`;
+  }
+  const it = A.items[A.idx], e = exInfo(it.ex), last = lastFor(it.ex), fh = failHint(it.ex, e);
+  h += `<div class="card ex big"><div class="fig">${figureSVG(e.pose || CUSTOM_POSE)}</div><div>
+    <span class="num">Übung ${A.idx + 1} von ${n}</span><h2 style="margin:2px 0">${esc(it.name)}</h2><div class="dose">${esc(it.dose)}</div></div></div>
+    ${fh ? `<p class="note">${esc(fh)}</p>` : ''}
+    ${last ? `<p class="mut">Letztes Mal (${shortD(last.date)}): ${esc(setsText(last.it))}</p>` : ''}
+    `;
+  if (it.cardio) {
+    h += `<div class="card"><div class="row"><label class="f">Dauer (min, optional)<input type="text" inputmode="decimal" value="${it.min ?? ''}" data-act="tMin"></label>
+      <label class="f">Distanz (km, optional)<input type="text" inputmode="decimal" value="${it.km ?? ''}" data-act="tKm"></label></div>
+      <button class="full ${it.done ? 'pri' : ''}" style="margin-top:10px" data-act="tCardio">${it.done ? 'Erledigt ✓' : 'Als erledigt markieren'}</button></div>`;
+  } else {
+    h += `<div class="card"><div class="sethead"><span></span><span>kg (optional)</span><span>${it.hold ? 'Sekunden' : 'Wdh.'}</span><span></span></div>
+      ${it.sets.map((z, k) => `<div class="setrow${z.done ? ' done' : ''}" data-row="${k}"><span>Satz ${k + 1}</span>
+        <input type="text" inputmode="decimal" value="${z.w != null ? fmtN(z.w) : ''}" data-act="tW" data-i="${k}" aria-label="Gewicht Satz ${k + 1}">
+        <input type="text" inputmode="numeric" value="${z.r != null ? fmtN(z.r) : ''}" data-act="tR" data-i="${k}" aria-label="${it.hold ? 'Sekunden' : 'Wiederholungen'} Satz ${k + 1}">
+        <button class="ico${z.done ? ' pri' : ''}" data-act="tSet" data-i="${k}" aria-label="Satz ${k + 1} erledigt" aria-pressed="${z.done}">✓</button></div>`).join('')}
+      <button class="full" style="margin-top:8px" data-act="tAddSet">+ Satz</button>
+      <p class="mut" style="margin-top:8px">Eintragen ist freiwillig. Abhaken startet den Pausentimer.</p></div>`;
+  }
+  h += `<details class="card"><summary>Anleitung & Varianten</summary>${variantsHTML(e)}</details>`;
+  h += `<div id="rest" class="rest"${A.rest ? '' : ' hidden'}><span id="restT"></span><button data-act="tRestAdd">+15 s</button><button data-act="tRestSkip">Weiter</button></div>
+    <div class="trnav"><button data-act="tPrev" ${A.idx === 0 ? 'disabled' : ''}>← Zurück</button><button class="pri" data-act="tNext">${A.idx === n - 1 ? 'Abschließen' : 'Nächste Übung →'}</button></div>`;
+  return h;
+}
+const parseNum = (v, hi) => { const x = parseFloat(String(v).replace(',', '.')); return Number.isFinite(x) && x >= 0 && x <= hi ? Math.round(x * 100) / 100 : null; };
+function trainAction(act, i, el) {
+  if (!A) return false;
+  const it = A.items[A.idx];
+  switch (act) {
+    case 'tW': it.sets[i].w = parseNum(el.value, 500); return 'sess';
+    case 'tR': it.sets[i].r = parseNum(el.value, 1000); return 'sess';
+    case 'tMin': it.min = parseNum(el.value, 600); return 'sess';
+    case 'tKm': it.km = parseNum(el.value, 300); return 'sess';
+    case 'tSet': {
+      const row = document.querySelector(`.setrow[data-row="${i}"]`), z = it.sets[i];
+      if (row) { z.w = parseNum(row.querySelector('[data-act=tW]').value, 500); z.r = parseNum(row.querySelector('[data-act=tR]').value, 1000); }
+      z.done = !z.done;
+      A.rest = z.done ? Date.now() + S.ui.rest * 1000 : A.rest; A.buzzed = false;
+      break;
+    }
+    case 'tAddSet': if (it.sets.length < 20) { const l = it.sets[it.sets.length - 1]; it.sets.push({ w: l ? l.w : null, r: l ? l.r : null, done: false }); } break;
+    case 'tCardio': it.done = !it.done; break;
+    case 'tRestAdd': if (A.rest) { A.rest = Math.max(A.rest, Date.now()) + 15000; A.buzzed = false; } break;
+    case 'tRestSkip': A.rest = null; break;
+    case 'tNext': A.idx = Math.min(A.items.length, A.idx + 1); A.rest = null; window.scrollTo(0, 0); break;
+    case 'tPrev': A.idx = Math.max(0, A.idx - 1); A.rest = null; window.scrollTo(0, 0); break;
+    case 'tCancel': case 'tDiscard':
+      if (!confirm('Training beenden, ohne es zu speichern?')) return false;
+      A = null; saveSession(); location.hash = '#heute'; return false;
+    case 'tSave': {
+      const entry = { id: uid(), date: today(), t: Date.now(), dur: Math.max(1, Math.round((Date.now() - A.start) / 60000)), plan: A.plan, name: A.name, short: A.short, ev: A.ev,
+        items: A.items.map(x => x.cardio
+          ? (x.done || x.min != null || x.km != null ? { ex: x.ex, name: x.name, sets: [], min: x.min, km: x.km } : null)
+          : (x.sets.some(z => z.done) ? { ex: x.ex, name: x.name, sets: x.sets.filter(z => z.done).map(z => ({ w: z.w, r: z.r })), min: null, km: null } : null)).filter(Boolean) };
+      S.log.push(entry); if (S.log.length > 3000) S.log.splice(0, S.log.length - 3000);
+      let ev = A.ev;
+      if (!ev) { const m = buildEvents().find(e => !e.skip && e.date === entry.date && e.plan === A.plan && !S.done[e.id]); if (m) ev = m.id; }
+      if (ev) S.done[ev] = Date.now();
+      A = null; saveSession(); save(); location.hash = '#heute'; toast('Training gespeichert.'); return false;
+    }
+    default: return false;
+  }
+  return 'sess-render';
+}
+// Pausentimer: aktualisiert nur die Anzeige, nicht die ganze Seite
+setInterval(() => {
+  const box = $('#rest'), t = $('#restT');
+  if (!box || !t) return;
+  if (!A || !A.rest) { box.hidden = true; return; }
+  box.hidden = false;
+  const left = Math.ceil((A.rest - Date.now()) / 1000);
+  if (left > 0) { box.classList.remove('over'); t.textContent = `Pause ${Math.floor(left / 60)}:${pad(left % 60)}`; }
+  else {
+    box.classList.add('over'); t.textContent = 'Pause vorbei – weiter geht’s';
+    if (!A.buzzed) { A.buzzed = true; saveSession(); try { navigator.vibrate && navigator.vibrate([250, 120, 250]); } catch (e) { /* nicht unterstützt */ } }
+  }
+}, 250);
+// Bildschirm während des Trainings anlassen (wo unterstützt)
+let wakeLock = null;
+async function updateWakeLock() {
+  try {
+    if (tab() === 'training' && A && document.visibilityState === 'visible') { if (!wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } }
+    else if (wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', updateWakeLock);
+
+/* ---------- Fortschritt ---------- */
+const longD = s => { const d = parseD(s); return `${WD[weekday(s)]} ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`; };
+function renderProgress() {
+  const { mon, sun, week } = weekInfo();
+  const doneW = week.filter(e => S.done[e.id]).length;
+  const freeW = S.log.filter(l => l.date >= mon && l.date <= sun && !l.ev && !week.some(e => S.done[e.id] && e.date === l.date && e.plan === l.plan)).length;
+  let h = `<h2>Diese Woche</h2><p class="mut">${shortD(mon)} – ${shortD(sun)} · ${doneW} von ${week.length} geplanten Einheiten erledigt${freeW ? ` · ${freeW} freie Einheit(en)` : ''}</p>`;
+  h += week.length ? `<div class="card">${week.map(e => `<div class="wk"><button class="ico chk${S.done[e.id] ? ' pri' : ''}" data-act="toggleDone" data-id="${e.id}" aria-pressed="${!!S.done[e.id]}" aria-label="Erledigt">✓</button>
+    <span class="sp"><b>${shortD(e.date)}</b> ${esc(evTitle(e))}<small>${e.time} · ${e.dur} min</small></span></div>`).join('')}</div>`
+    : '<div class="card mut">Für diese Woche sind keine Termine geplant.</div>';
+  const exIds = [...new Set(S.log.flatMap(l => l.items.map(it => it.ex)))];
+  const nameOf = id => { for (let i = S.log.length - 1; i >= 0; i--) { const it = S.log[i].items.find(x => x.ex === id); if (it) return EXERCISES[id] ? EXERCISES[id].name : S.custom[id] ? S.custom[id].name : it.name; } return id; };
+  h += '<h2>Verlauf je Übung</h2>';
+  if (!exIds.length) h += '<div class="card mut">Noch keine Einträge. Starte ein Training und trage – wenn du möchtest – Gewicht und Wiederholungen ein.</div>';
+  else {
+    if (!exIds.includes(progEx)) progEx = exIds[0];
+    const rows = S.log.filter(l => l.items.some(it => it.ex === progEx)).slice(-8).reverse();
+    const ms = metricsFor(progEx);
+    if (!ms.some(m => m.k === progMetric)) progMetric = ms.length ? ms[0].k : '';
+    const m = ms.find(x => x.k === progMetric);
+    h += `<div class="card"><select data-act="progEx" aria-label="Übung">${exIds.map(id => [id, nameOf(id)]).sort((a, b) => a[1].localeCompare(b[1], 'de')).map(([id, nm]) => `<option value="${esc(id)}"${id === progEx ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select>
+      <p class="mut" style="margin-top:10px">Letzte Einträge dieser Übung</p>
+      <table class="hist"><tbody>${rows.map(l => `<tr><td>${shortD(l.date)}</td><td>${esc(setsText(l.items.find(it => it.ex === progEx)))}</td></tr>`).join('')}</tbody></table>
+      ${ms.length > 1 ? `<div class="seg2 segn" style="margin-top:14px">${ms.map(x => `<button data-act="progMetric" data-id="${x.k}" class="${x.k === progMetric ? 'on' : ''}">${x.label}</button>`).join('')}</div>` : ''}
+      ${m ? (m.data.length > 1 ? `<h3 style="margin-top:14px">${m.label}${m.unit ? ` (${m.unit})` : ''}</h3>${lineChart(m.data, m.unit, m.label)}`
+        : '<p class="mut" style="margin-top:12px">Der Graph erscheint ab zwei Trainings mit eingetragenen Werten.</p>')
+        : '<p class="mut" style="margin-top:12px">Für einen Graphen Gewicht oder Wiederholungen beim Training eintragen.</p>'}</div>`;
+  }
+  const plansInLog = [...new Map(S.log.map(l => [l.plan, l.name])).entries()];
+  if (progPlan && !plansInLog.some(([id]) => id === progPlan)) progPlan = '';
+  const logs = S.log.filter(l => !progPlan || l.plan === progPlan).slice(-15).reverse();
+  h += '<h2>Letzte Einheiten</h2>';
+  if (S.log.length) h += `<select data-act="progPlan" aria-label="Plan filtern" style="margin-bottom:4px"><option value="">Alle Pläne</option>${plansInLog.map(([id, nm]) => `<option value="${esc(id)}"${id === progPlan ? ' selected' : ''}>${esc((planById(id) || {}).name || nm)}</option>`).join('')}</select>`;
+  h += logs.length ? logs.map(l => `<details class="card"><summary><b>${longD(l.date)}</b>&nbsp;· ${esc(l.name)}${l.short ? ' (kurz)' : ''}${l.dur ? ` · ${fmtN(l.dur)} min` : ''}</summary>
+      ${l.items.length ? `<ul>${l.items.map(it => `<li>${esc(it.name)}: ${esc(setsText(it))}</li>`).join('')}</ul>` : '<p class="mut">Ohne Details gespeichert.</p>'}
+      <button class="dang" data-act="logDel" data-id="${l.id}">Eintrag löschen</button></details>`).join('')
+    : '<div class="card mut">Noch keine gespeicherten Einheiten.</div>';
+  const days = S.lastBackup ? Math.floor((Date.now() - S.lastBackup) / 864e5) : null;
+  h += `<h2>Sicherung</h2><div class="card"><p class="mut">Dein Protokoll liegt nur auf diesem Gerät. ${S.lastBackup ? `Letzte Speicherdatei: ${days === 0 ? 'heute' : days === 1 ? 'gestern' : `vor ${days} Tagen`}.` : 'Noch keine Speicherdatei erstellt.'}</p>
+    <button class="full${days == null || days > 30 ? ' pri' : ''}" data-act="export">Speicherdatei herunterladen</button></div>`;
+  return h;
+}
+// Kennzahlen je Übung, pro Tag der beste Wert
+function metricsFor(ex) {
+  const defs = [['w', 'Gewicht', 'kg', it => maxOf(it.sets.map(z => z.w))], ['r', 'Wiederholungen', '', it => maxOf(it.sets.map(z => z.r))],
+    ['min', 'Dauer', 'min', it => it.min], ['km', 'Distanz', 'km', it => it.km]];
+  return defs.map(([k, label, unit, f]) => {
+    const byDay = new Map();
+    S.log.forEach(l => l.items.filter(it => it.ex === ex).forEach(it => { const v = f(it); if (v != null) byDay.set(l.date, Math.max(byDay.get(l.date) ?? -Infinity, v)); }));
+    return { k, label: k === 'w' ? 'Höchstes Gewicht' : k === 'r' ? 'Beste Wdh. bzw. Sekunden' : label, unit, data: [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, v })) };
+  }).filter(m => m.data.length);
+}
+function maxOf(a) { const v = a.filter(x => x != null); return v.length ? Math.max(...v) : null; }
+function niceStep(range) { const r = range / 3 || 1, p = Math.pow(10, Math.floor(Math.log10(r))); return [1, 2, 2.5, 5, 10].map(m => m * p).find(x => x >= r); }
+// Einfacher Linien-Graph (eine Linie, 2px, Punkte mit Hintergrund-Ring, ruhiges Raster)
+function lineChart(data, unit, label) {
+  const W = 320, H = 170, L = 38, R = 30, T = 12, B = 24;
+  const xs = data.map(d => parseD(d.date).getTime()), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const vs = data.map(d => d.v); let lo = Math.min(...vs), hi = Math.max(...vs);
+  const step = niceStep(hi - lo || Math.max(1, hi * 0.2)); lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step; if (hi === lo) { hi += step; lo = Math.max(0, lo - step); }
+  const X = t => x1 === x0 ? (L + W - R) / 2 : L + (t - x0) / (x1 - x0) * (W - L - R), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+  const fmt = v => fmtN(Math.round(v * 100) / 100);
+  let g = '';
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${L - 6}" y="${Y(v) + 3.5}" text-anchor="end">${fmt(v)}</text>`;
+  const sd = d => { const x = parseD(d); return `${pad(x.getDate())}.${pad(x.getMonth() + 1)}.`; };
+  g += `<text x="${X(xs[0])}" y="${H - 6}" text-anchor="${data.length > 1 ? 'start' : 'middle'}">${sd(data[0].date)}</text>`;
+  if (data.length > 1) g += `<text x="${X(xs[xs.length - 1])}" y="${H - 6}" text-anchor="end">${sd(data[data.length - 1].date)}</text>`;
+  const pts = data.map((d, i) => [X(xs[i]), Y(d.v)]);
+  g += `<polyline class="ln" points="${pts.map(p => p.join(',')).join(' ')}"/>`;
+  const last = pts[pts.length - 1];
+  g += `<text class="val" x="${Math.min(last[0] + 6, W - 2)}" y="${last[1] - 8}" text-anchor="end">${fmt(data[data.length - 1].v)}</text>`;
+  data.forEach((d, i) => {
+    const tip = esc(`${longD(d.date)}: ${fmt(d.v)}${unit ? ' ' + unit : ''}`);
+    g += `<circle class="pt" data-p="${i}" cx="${pts[i][0]}" cy="${pts[i][1]}" r="4"/><circle class="hit" data-act="chartPt" data-p="${i}" data-tip="${tip}" cx="${pts[i][0]}" cy="${pts[i][1]}" r="16"><title>${tip}</title></circle>`;
+  });
+  const first = data[0].v, lastV = data[data.length - 1].v, diff = Math.round((lastV - first) * 100) / 100;
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} im Verlauf">${g}</svg>
+    <p class="mut chartcap" id="chartCap">${data.length} Trainings · seit Beginn ${diff > 0 ? '+' : ''}${fmt(diff)}${unit ? ' ' + unit : ''}. Tippe auf einen Punkt für Details.</p></div>`;
+}
+function showPoint(el) {
+  document.querySelectorAll('.chart .pt').forEach(c => c.classList.toggle('sel', c.dataset.p === el.dataset.p));
+  const cap = $('#chartCap'); if (cap) cap.textContent = el.dataset.tip;
+}
+document.addEventListener('pointerover', e => { const h = e.target.closest && e.target.closest('.chart .hit'); if (h) showPoint(h); });
+function progAction(act, el, id) {
+  switch (act) {
+    case 'progEx': progEx = el.value; return 'view';
+    case 'progMetric': progMetric = id; return 'view';
+    case 'progPlan': progPlan = el.value; return 'view';
+    case 'chartPt': showPoint(el); return false;
+    case 'logDel': { const l = S.log.find(x => x.id === id); if (!l || !confirm('Diesen Eintrag löschen?')) return false; S.log = S.log.filter(x => x.id !== id); if (l.ev) delete S.done[l.ev]; return true; }
+    default: return false;
+  }
+}
+// Aktionen, die in mehreren Bereichen vorkommen
+function commonAction(act, el, id) {
+  switch (act) {
+    case 'trStart': case 'trStartShort': startSession(el.dataset.plan, act === 'trStartShort', el.dataset.ev); return 'done';
+    case 'startFree': case 'startFreeShort': startSession($('#freePlan').value, act === 'startFreeShort', ''); return 'done';
+    case 'toggleDone': if (S.done[id]) delete S.done[id]; else S.done[id] = Date.now(); return true;
+    case 'export': return setAction('export');
+    case 'install': return setAction('install');
+    case 'themeToggle': S.ui.theme = isDark() ? 'light' : 'dark'; applyTheme(); return true;
+    default: return undefined;
+  }
+}
+
 /* ---------- Steuerung ---------- */
-const VIEWS = { plan: ['Trainingsplan', renderPlan], uebungen: ['Übungen', renderLib], kalender: ['Kalender', renderCal], einstellungen: ['Einstellungen', renderSettings] };
-const tab = () => (VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'plan');
+const VIEWS = { heute: ['Heute', renderToday], plan: ['Pläne', renderPlan], uebungen: ['Übungen', renderLib], kalender: ['Kalender', renderCal],
+  fortschritt: ['Fortschritt', renderProgress], einstellungen: ['Einstellungen', renderSettings], training: ['Training', renderTraining] };
+const tab = () => (VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'heute');
 function render() {
   const t = tab(), y = window.scrollY;
   $('#title').textContent = VIEWS[t][0];
   $('#app').innerHTML = VIEWS[t][1]();
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === t));
+  document.body.classList.toggle('training', t === 'training');
   if (t === 'uebungen') filterLib();
   window.scrollTo(0, y);
   const chip = document.querySelector('.chips .on'); // aktiven Plan in der Leiste sichtbar halten
   if (chip) chip.parentNode.scrollLeft = chip.offsetLeft - 16;
   document.querySelectorAll('select.catsel').forEach(s => { s.dataset.prev = s.value; });
+  updateWakeLock();
 }
 function handle(ev) {
   const el = ev.target.closest('[data-act]');
@@ -682,7 +1007,12 @@ function handle(ev) {
   if (ev.type === 'click' && (el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return; // Eingaben reagieren auf "change"
   const act = el.dataset.act, i = Number(el.dataset.i), id = el.dataset.id;
   const t = tab();
-  const r = t === 'plan' ? planAction(act, i, el) : t === 'uebungen' ? libAction(act, el, id) : t === 'kalender' ? calAction(act, i, el, id) : setAction(act, i, el);
+  let r = commonAction(act, el, id);
+  if (r === 'done') return;
+  if (r === undefined) r = t === 'plan' ? planAction(act, i, el) : t === 'uebungen' ? libAction(act, el, id) : t === 'kalender' ? calAction(act, i, el, id)
+    : t === 'training' ? trainAction(act, i, el) : t === 'fortschritt' ? progAction(act, el, id) : setAction(act, i, el);
+  if (r === 'sess') { saveSession(); return; }
+  if (r === 'sess-render') { saveSession(); render(); return; }
   if (r === 'view') { render(); return; }
   if (r) { save(); render(); }
 }
@@ -702,6 +1032,11 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('input', e => { if (e.target.id === 'libQ') { libQ = e.target.value; filterLib(); } });
 window.addEventListener('hashchange', () => { openEv = null; libEdit = null; newPlan = false; render(); window.scrollTo(0, 0); });
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (['heute', 'einstellungen'].includes(tab())) render(); });
+window.addEventListener('appinstalled', () => { installPrompt = null; });
+// PWA: Offline-Betrieb und Installation (speichert nur die App-Dateien, keine persönlichen Daten)
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => { /* optional */ });
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* optional */ }
 applyTheme();
 save();
 render();

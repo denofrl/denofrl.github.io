@@ -325,7 +325,17 @@ const DEFAULT_TEMPLATES = [
 ];
 
 const RUN_HINT = 'Locker laufen, 20–30 Minuten. Tempo so, dass du dich noch unterhalten kannst. Bei Bedarf Gehpausen einbauen (z. B. 3 min laufen / 1 min gehen).';
-const TRAINING_HINT = 'Vor dem Training 5 min aufwärmen (Mobilisation, leichte Sätze). 60–90 s Pause zwischen den Sätzen. Gewicht so wählen, dass am Satzende noch 1–3 saubere Wiederholungen möglich wären.';
+const TRAINING_HINT = 'Vor dem Training 5 min aufwärmen (Mobilisation, leichte Sätze). 60–90 s Pause zwischen den Sätzen. Letzter Satz jeder Übung bis zum Muskelversagen; bei Isolations- und Körpergewichtsübungen (z. B. Curls, Seitheben, Liegestütz) alle Sätze. Bei Kreuzheben, Kniebeugen, Ausfallschritten und Schulterdrücken endet der Satz, sobald die Technik nicht mehr sauber ist.';
+// Intensitätsregel je Übung: alle Sätze bis zum Versagen / Technikgrenze bei komplexen Übungen
+const FAIL_ALL = ['curl', 'hammer', 'oh_tri', 'lat_raise', 'rev_fly', 'floor_fly', 'knee_pushup', 'pp_pushup', 'close_pushup', 'pike_pushup', 'rev_dip', 'calf', 'glute_bridge', 'sl_bridge', 'superman'];
+const FAIL_TECH = ['rdl', 'sl_rdl', 'squat', 'sumo', 'ohp', 'lunge', 'split_squat', 'side_lunge', 'row2'];
+function failHint(id, e) {
+  if (!e || e.cat === 'Cardio') return '';
+  if (FAIL_TECH.includes(id)) return 'Letzter Satz bis zum Muskelversagen – Satz beenden, sobald die Technik nicht mehr sauber ist.';
+  if (FAIL_ALL.includes(id)) return 'Alle Sätze bis zum Muskelversagen (saubere Wiederholungen).';
+  if (e.cat === 'Core' || (e.cues || []).join(' ').includes('halten')) return 'So lange halten bzw. wiederholen, wie die Ausführung sauber bleibt.';
+  return 'Letzter Satz bis zum Muskelversagen.';
+}
 
 function figureSVG(p) {
   if (!p) return '';
